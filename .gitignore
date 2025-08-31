@@ -1,0 +1,8 @@
+```
+__pycache__/
+*.pyc
+*.pyo
+*.onnx
+.env
+venv/
+```

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>AIはどうやって文章を生成しているのか？</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/onnxjs/dist/onnx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0/dist/tf.min.js"></script>
+  <style>
+    body {
+      font-family: "Segoe UI", "Meiryo", sans-serif;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+    }
+    h1 {
+      margin-top: 40px;
+      font-size: 2em;
+      color: #333;
+    }
+    .input-area {
+      margin: 30px auto 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    input[type="text"] {
+      width: 300px;
+      padding: 8px;
+      font-size: 1em;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      padding: 10px 30px;
+      font-size: 1em;
+      background: #4f8cff;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .results {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px;
+      margin: 40px auto 0;
+      max-width: 900px;
+    }
+    .result-box {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      width: 280px;
+      min-height: 180px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .result-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #4f8cff;
+      font-size: 1.1em;
+    }
+    .result-output {
+      min-height: 60px;
+      margin-bottom: 10px;
+      font-size: 1em;
+      color: #222;
+      word-break: break-all;
+    }
+    .result-caption {
+      font-size: 0.95em;
+      color: #666;
+      margin-top: auto;
+      background: #f0f4ff;
+      border-radius: 4px;
+      padding: 6px 10px;
+      width: 100%;
+    }
+    @media (max-width: 900px) {
+      .results {
+        flex-direction: column;
+        align-items: center;
+      }
+      .result-box {
+        width: 90vw;
+        max-width: 350px;
+      }
+    }
+    .box {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+      padding: 20px;
+      margin: 20px auto;
+      max-width: 600px;
+      width: 90%;
+    }
+    .box h2 {
+      font-size: 1.5em;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    .box input[type="text"] {
+      width: calc(100% - 20px);
+      margin-bottom: 10px;
+    }
+    .box button {
+      width: 100%;
+    }
+    .box .result {
+      margin-top: 10px;
+      font-size: 1em;
+      color: #222;
+      min-height: 40px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <h1>AIの歴史（生成編）：どうやって文章を作るのか？</h1>
+  <div style="margin: 18px auto 0; max-width: 600px; font-size:1em; color:#444; background:#eef6ff; border-radius:6px; padding:12px;">
+    <b>サンプル文（学習データ）</b><br>
+    <span style="font-size:0.98em;">
+      「AIは文章を生成します。」<br>
+      「AIは人間のように考えます。」<br>
+      「AIは進化しています。」<br>
+      「AIは様々な分野で活躍しています。」<br>
+      「AIは自然言語を理解します。」
+    </span>
+    <br>※Markov連鎖はこのサンプル文を元に生成します。
+  </div>
+  <div class="input-area">
+    <input type="text" id="userInput" placeholder="短い文章を入力してください">
+    <button id="generateBtn">生成する</button>
+  </div>
+  <div class="results">
+    <div class="result-box" id="markovBox">
+      <div class="result-title">Markov連鎖</div>
+      <div class="result-output" id="markovOutput"></div>
+        <div class="result-caption">
+  Markov＝初期のAI。確率で文字を並べるだけで、文脈や意味は考慮しません。<br>
+  単純な仕組みですが、AIによる文章生成の出発点です。<br>
+  （まず、サンプル文から文字ペアの遷移を記録し、遷移辞書を作る。日本語の文章を一文字ずつMarkov連鎖で確率的に生成。JavaScriptで実装。）
+        </div>
+    </div>
+    <div class="result-box" id="rnnBox">
+      <div class="result-title">RNN（ダミー）</div>
+      <div class="result-output" id="rnnOutput"></div>
+        <div class="result-caption">
+            RNN＝文脈を少し考慮。Markovより自然な文になる。<br>
+            <span style="font-size:0.92em;color:#444;">
+              ※RNNは時系列で文脈を考慮し、Word2Vecなどの分散表現（単語をベクトル化）を使って前後の単語の関係も学習します。<br>
+              ただし、特徴量（単語の意味や関係性など）は人が手作業で設計・追加する場合が多く、AIの進化の途中段階です。<br>
+              （このWebサービスでは、実際のRNNは使わず、JavaScriptでダミー関数として雰囲気のみ再現しています）
+            </span>
+        </div>
+    </div>
+    <div class="result-box" id="gptBox">
+      <div class="result-title">GPT（OpenAI）</div>
+      <div class="result-output" id="gptOutput"></div>
+        <div class="result-caption">
+            GPT＝文脈・知識・創造性を持つ現在のAI。<br>
+            <span style="font-size:0.92em;color:#444;">
+              ※GPTなどの生成AIは、深層学習（ディープラーニング）を用いた大規模言語モデルです。<br>
+              膨大なテキストデータから文脈や意味、知識、特徴量も自動で抽出・学習し、人間のような自然な文章を生成します。<br>
+              AIの進化の最先端であり、特徴量設計も自動化されています。<br>
+              （ここでは、OpenAIのAPIをJavaScriptから呼び出して生成）
+            </span>
+        </div>
+    </div>
+    <div class="result-box" id="adminRnnBox">
+      <div class="result-title">管理者RNN（学習済みモデルで推論）</div>
+      <input type="text" id="adminRnnInput" placeholder="推論したい文章を入力">
+      <button id="runAdminRnnBtn">管理者RNNで生成</button>
+      <div class="result-output" id="adminRnnResult"></div>
+      <button id="showAdminRnnStoryBtn" style="margin-top:10px;">苦労話はこちら</button>
+      <div class="result-caption">
+        管理者RNN＝本来は独自学習モデルで推論する予定でしたが、技術的な困難により今回はダミー表示のみです。
+      </div>
+    </div>
+    <div id="adminRnnStoryPage" style="display:none; background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.07); max-width:600px; margin:40px auto; padding:24px;">
+      <h2 style="color:#4f8cff;">管理者RNN開発の目的・経緯・苦労・結果</h2>
+      <ul style="text-align:left; font-size:1em; margin:8px 0 0 0; padding-left:18px;">
+        <li>目的：AIの進化（Markov→RNN→GPT）を体感・比較できるWebサービスを作る</li>
+        <li>目指したモデル学習のステップ：<br>
+          ① Python（Keras等）でRNNモデルを学習<br>
+          ② ONNX形式に変換<br>
+          ③ サーバー（Vercel等）にアップロード<br>
+          ④ Web API経由で推論・結果表示<br>
+        </li>
+        <li>経緯：RNNモデルをPythonで学習→ONNX変換→Web連携を目指したが、依存関係・バージョン問題で断念</li>
+        <li>苦労：TensorFlow/Keras/NumPy/tf2onnx/onnxruntimeのバージョン競合・インストールエラー多数</li>
+        <li>結果：
+          <ul style="margin-top:4px;">
+            <li>最初は管理者RNNをONNX.jsでWeb版にする方針で挑戦→失敗し一旦外す</li>
+            <li>リリース直前に再調査し、サーバ側にモデルと実行ファイルを置く方式で再挑戦→失敗</li>
+            <li>失敗理由：TensorFlow～KerasなどのモジュールのVersion不一致問題が解決できず（生成AIの進化が速すぎて、Googleがこれらをもう整理していないため）</li>
+            <li>最終的にダミーRNN・Markov・GPT（OpenAI API）で比較体験できるシンプルなWebサービスに着地</li>
+          </ul>
+        </li>
+        <li>教訓：現代AI開発はAPI活用が最適。自前学習モデルのWeb連携は技術的負担が大きい</li>
+      </ul>
+      <div style="margin-top:18px; font-size:0.98em; color:#444; background:#f7f7f7; border-radius:6px; padding:10px;">
+        <b>用語解説</b><br>
+        <span style="color:#4f8cff;">Keras：</span> Pythonで使える深層学習ライブラリ。直感的な記述でニューラルネットワーク（RNNやCNNなど）を構築・学習できる。<br>
+        <span style="color:#4f8cff;">ONNX：</span> 機械学習モデルの共通フォーマット。PyTorchやKerasなどで学習したモデルをONNX形式に変換することで、様々な環境・言語で推論できる。
+      </div>
+      <button id="backToMainBtn" style="margin-top:24px;">元の画面に戻る</button>
+    </div>
+    <script>
+      // 管理者RNN生成ボタン（API通信なし、メッセージのみ表示）
+      document.getElementById('runAdminRnnBtn').onclick = function() {
+        document.getElementById('adminRnnResult').textContent = 'ごめん、無理でした';
+      };
+      // 苦労話ページ表示
+      document.getElementById('showAdminRnnStoryBtn').onclick = function() {
+        document.getElementById('adminRnnStoryPage').style.display = 'block';
+        document.getElementById('adminRnnStoryPage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      document.getElementById('backToMainBtn').onclick = function() {
+        document.getElementById('adminRnnStoryPage').style.display = 'none';
+      };
+    </script>
+  </div>
+  <script src="tfjs_gru_demo.js"></script>
+  <script>
+    document.getElementById('tfjsGruBtn').addEventListener('click', async () => {
+      const input = document.getElementById('userInput').value.trim();
+      const outputElem = document.getElementById('tfjsGruOutput');
+      outputElem.textContent = '推論中...';
+      try {
+        const result = await runGRUPrediction(input);
+        outputElem.textContent = result;
+      } catch (e) {
+        outputElem.textContent = '推論エラー: ' + e;
+      }
+    });
+  </script>
+  <script>
+    // Markov連鎖のサンプル文データ
+    const markovSamples = [
+      "AIは文章を生成します。",
+      "AIは人間のように考えます。",
+      "AIは進化しています。",
+      "AIは様々な分野で活躍しています。",
+      "AIは自然言語を理解します。"
+    ];
+
+    // Markov連鎖：日本語の文章を一文字ずつ遷移する方式
+    function markovGenerate(input) {
+      // サンプル文から文字ペアの遷移辞書を作成
+      const transitions = {};
+      markovSamples.forEach(sentence => {
+        const chars = sentence.replace(/[。]/g, '').split('');
+        for (let i = 0; i < chars.length - 1; i++) {
+          const c1 = chars[i];
+          const c2 = chars[i + 1];
+          if (!transitions[c1]) transitions[c1] = [];
+          transitions[c1].push(c2);
+        }
+      });
+      // 文章生成
+      let startChar = input ? input[0] : "A";
+      let current = startChar;
+      let result = current;
+      for (let i = 0; i < 30; i++) {
+        let nextCandidates = transitions[current];
+        if (nextCandidates && nextCandidates.length > 0) {
+          let next = nextCandidates[Math.floor(Math.random() * nextCandidates.length)];
+          result += next;
+          current = next;
+        } else {
+          // 遷移候補がなければ、ランダムな文字でリセット
+          const allChars = Object.keys(transitions);
+          current = allChars[Math.floor(Math.random() * allChars.length)];
+          result += current;
+        }
+      }
+      return result + "。";
+    }
+
+    // RNNのダミー実装
+    function rnnGenerate(input) {
+      // 入力文を少し加工して、Markovより自然な文を返す
+      const templates = [
+        `AIは${input}について学習し、より自然な文章を生成します。`,
+        `AIは${input}を理解し、文脈に沿った文章を作ります。`,
+        `AIは${input}を元に、意味のある文章を考えます。`
+      ];
+      // ランダムにテンプレートを選ぶ
+      return templates[Math.floor(Math.random() * templates.length)];
+    }
+
+    // GPT（OpenAI API）呼び出し
+    async function gptGenerate(input) {
+      const outputElem = document.getElementById('gptOutput');
+      outputElem.textContent = "生成中…";
+      try {
+        const response = await fetch("/generate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ prompt: input })
+        });
+        const data = await response.json();
+        if (data.result) {
+          outputElem.textContent = data.result;
+        } else {
+          outputElem.textContent = 'エラー: ' + (data.error || '不明');
+        }
+      } catch (e) {
+        outputElem.textContent = "API呼び出し失敗";
+      }
+    }
+
+    // ボタンイベント
+    // localStorageから復元
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('userInput').value = localStorage.getItem('userInput') || '';
+      document.getElementById('markovOutput').textContent = localStorage.getItem('markovOutput') || '';
+      document.getElementById('rnnOutput').textContent = localStorage.getItem('rnnOutput') || '';
+      document.getElementById('gptOutput').textContent = localStorage.getItem('gptOutput') || '';
+    });
+
+    document.getElementById('generateBtn').addEventListener('click', async () => {
+      const input = document.getElementById('userInput').value.trim();
+
+      // 入力値をlocalStorageに保存
+      localStorage.setItem('userInput', input);
+
+      // Markov
+      const markovResult = markovGenerate(input);
+      document.getElementById('markovOutput').textContent = markovResult;
+      localStorage.setItem('markovOutput', markovResult);
+
+      // RNN
+      const rnnResult = rnnGenerate(input);
+      document.getElementById('rnnOutput').textContent = rnnResult;
+      localStorage.setItem('rnnOutput', rnnResult);
+
+      // GPT
+      document.getElementById('gptOutput').textContent = "生成中…";
+      localStorage.setItem('gptOutput', "生成中…");
+      await gptGenerate(input);
+      // GPT結果はgptGenerate内で直接表示されるので、API呼び出し後に保存
+      localStorage.setItem('gptOutput', document.getElementById('gptOutput').textContent);
+    });
+  </script>
+  <script src="local_rnn.js"></script>
+</body>
+</html>
