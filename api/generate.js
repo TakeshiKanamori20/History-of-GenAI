@@ -1,4 +1,5 @@
 // Vercel Serverless Function: OpenAI GPT-3.5 Turbo API
+// 2025/08/31: デプロイ再認識用コメント追加
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
